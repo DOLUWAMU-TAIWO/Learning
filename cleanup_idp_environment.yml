@@ -1,0 +1,67 @@
+---
+- name: Cleanup IDP environment and undo changes
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Stop and remove Docker containers
+      community.docker.docker_container:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - hello-world
+        - "{{ app_name | default('') }}_container"
+      ignore_errors: yes
+
+    - name: Remove Docker images
+      community.docker.docker_image:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - hello-world
+        - "{{ image_name | default('') }}"
+      ignore_errors: yes
+
+    - name: Remove Docker group assignment from user
+      user:
+        name: "{{ ansible_user | default('ubuntu') }}"
+        groups: docker
+        append: no
+      ignore_errors: yes
+
+    - name: Remove installed packages
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+          - git
+          - curl
+          - unzip
+          - maven
+          - nodejs
+          - npm
+          - python3-pip
+        state: absent
+        purge: yes
+      ignore_errors: yes
+
+    - name: Remove cloned app folder if exists
+      file:
+        path: "/opt/{{ app_name | default('') }}_src"
+        state: absent
+      ignore_errors: yes
+
+    - name: Remove /home/ubuntu/IDP directory
+      file:
+        path: "/home/ubuntu/IDP"
+        state: absent
+      ignore_errors: yes
+
+    - name: Remove GitHub host key from known_hosts
+      lineinfile:
+        path: /home/ubuntu/.ssh/known_hosts
+        regexp: '^github\.com'
+        state: absent
+      become: false
+      ignore_errors: yes
