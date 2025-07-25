@@ -1,3 +1,4 @@
+```mermaid
 graph TD
     subgraph User Interaction Layer
         A[User Interface (Web/Mobile App)] -- User Query --> B(API Gateway/Load Balancer)
