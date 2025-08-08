@@ -14,8 +14,7 @@ This document provides a deep, implementation-accurate overview of the React Nat
   - If authenticated but profile incomplete → CompleteProfile → Success → role dashboard.
   - Else → role-based TabNavigator (Tenant or Landlord).
   - Unauthenticated users see Login/Register/Verify flows.
-  - A first-time Splash branch exists but is currently shadowed by the unauthenticated branch order.
-- Search is a modular system (hooks + UI) with Google Places suggestions, advanced filters, and results rendering components.
+  - First-time Splash now shows only on initial launch (branch order fixed).
 
 ---
 
@@ -98,24 +97,23 @@ Files:
 
 ```mermaid
 flowchart TD
-  A[App.tsx] --> B[Providers:
-SafeAreaProvider → ApolloProvider → ThemeProvider → AuthProvider → UserProvider → NavigationContainer]
+  A[App.tsx] --> B[Providers<br/>SafeAreaProvider → ApolloProvider → ThemeProvider → AuthProvider → UserProvider → NavigationContainer]
   B --> C[StackNavigator]
 
-  subgraph Stack Logic
-    I{isLoading || !isInitialized || isFirstLaunch===null?}
-    I -->|true| L[LoadingScreen]
-    I -->|false| J{isAuthenticated && user.id?}
+  subgraph Stack_Logic
+    I{Init complete?}
+    I -->|No| L[LoadingScreen]
+    I -->|Yes| J{Authenticated?}
 
-    J -->|true| K{needsProfileCompletion?}
-    K -->|true| CP[CompleteProfile → SuccessScreen → Tabs]
-    K -->|false| R{user.userType}
-    R -->|landlord| LT[LandlordTabNavigator]
-    R -->|tenant| TT[TenantTabNavigator]
+    J -->|Yes| PC{Profile complete?}
+    PC -->|No| CP[CompleteProfile → Success]
+    PC -->|Yes| UT{User type}
+    UT -->|Landlord| LT[LandlordTabNavigator]
+    UT -->|Tenant| TT[TenantTabNavigator]
 
-    J -->|false| U[Unauthenticated Stack:
-Login, Register, VerifyEmail, CompleteProfile, Success]
-    %% Note: First-time Splash branch exists but is shadowed by U above
+    J -->|No| FTL{First-time launch?}
+    FTL -->|Yes| SPL[Splash → Login]
+    FTL -->|No| U[Unauthenticated<br/>Login, Register, VerifyEmail, CompleteProfile, Success]
   end
 
   subgraph TenantTabNavigator
@@ -128,20 +126,14 @@ Login, Register, VerifyEmail, CompleteProfile, Success]
 
   subgraph LandlordTabNavigator
     L1[Dashboard: LandlordHome]
-    L2[Listings: landlord/Listings]
-    L3[Visits: landlord/Visits]
-    L4[Chat: landlord/Chat]
-    L5[Bookings: landlord/Bookings]
-    L6[Settings: landlord/Settings]
+    L2[Listings]
+    L3[Visits]
+    L4[Chat]
+    L5[Bookings]
+    L6[Settings]
   end
 
-  S[[Additional Routes in Stack:
-ListingDetail,
-Search,
-ListingsScreen,
-CreateListing,
-Settings modals
-(PersonalDetails, ChangePassword, NotificationSettings, VisitDuration, Country, Theme, BufferTime)]]
+  S[[Additional Routes<br/>ListingDetail, Search, ListingsScreen,<br/>CreateListing, Settings Modals]]
   TT --> S
   LT --> S
 ```
@@ -149,7 +141,7 @@ Settings modals
 ### 6.2 Screens & Routes
 
 - Auth/Onboarding:
-  - `SplashScreen` (exists; current branch order prevents it from showing on first app launch – see caveat below)
+  - `SplashScreen` (now shows only on first app launch)
   - `LoginScreen`, `RegisterScreen`, `VerifyEmailScreen`, `SuccessScreen`, `CompleteProfile`
 - Tenant Tabs:
   - Dashboard: `TenantHome`
@@ -167,13 +159,10 @@ Settings modals
 - Global stack screens:
   - `ListingDetail`, `Search`, `ListingsScreen`, `CreateListing`, Settings modals
 
-### 6.3 Caveat: First-time Splash Branch
+### 6.3 First-time Splash Branch (implemented)
 
-- StackNavigator checks `isAuthenticated` first and returns the unauthenticated stack before it reaches the `isFirstTimeLaunch` branch.
-- Effect: Even on first launch, unauthenticated users go directly to Login instead of Splash.
-- Recommendation: Reorder to evaluate `isFirstTimeLaunch` before returning the unauthenticated stack, e.g.:
-  - if (isFirstTimeLaunch) → Splash flow → Login → …
-  - else if (!isAuthenticated) → Login stack
+- The branch order in `StackNavigator` now evaluates first-time launch before returning the unauthenticated stack.
+- Effect: On first launch, users see Splash → Login. Returning unauthenticated users go straight to Login. Authenticated users go to their dashboards.
 
 ---
 
@@ -183,8 +172,8 @@ Settings modals
   - iOS: `StatusBar.setBarStyle('light-content'|'dark-content', true)`
   - Android: also sets background color and translucency.
 - Info.plist (iOS): must include `UIViewControllerBasedStatusBarAppearance=false` so RN can control status bar globally.
-- Per-screen StatusBar usage persists in a few screens (e.g., `SplashScreen`, `LoginScreen`), which can conflict with the global approach.
-- Recommendation: Remove per-screen StatusBar components to avoid overrides and keep consistent theme behavior.
+- Per-screen StatusBar cleanup: removed in `SplashScreen` and `LoginScreen` to avoid conflicts with the global approach.
+- Recommendation: Audit remaining screens for any stray per-screen StatusBar usage.
 
 Related doc: `IOS_STATUS_BAR_DARK_MODE_FIX.md` (root) explains the issue, root causes, and fix.
 
@@ -266,13 +255,11 @@ File: `screens/CreateListingScreen.js`
 
 ## 14) Known Caveats & Recommendations
 
-1) First-time Splash not shown
-- Cause: In `StackNavigator`, the unauthenticated return happens before the `isFirstTimeLaunch` branch.
-- Fix: Evaluate `isFirstTimeLaunch` earlier; route Splash → Login → (rest of unauthenticated stack) only on first run.
+1) First-time Splash (fixed)
+- Branch order updated in `StackNavigator` to show Splash → Login on first launch only.
 
 2) StatusBar duplication
-- Some screens still call `<StatusBar .../>` while a global controller exists.
-- Fix: Remove per-screen StatusBar calls to avoid content color/background mismatches.
+- Removed in Splash and Login; audit remaining screens.
 
 3) Cross-check status bar across stacked modals
 - Ensure modal presentations (Settings family) don’t force unintended bar styles; global imperative setter should win, but verify.
@@ -303,7 +290,6 @@ File: `screens/CreateListingScreen.js`
 ---
 
 ## 16) Next Steps (Suggested)
-- Reorder first-time Splash branch to ensure it appears on first launch.
-- Remove per-screen StatusBar components (e.g., in `SplashScreen`, `LoginScreen`) to rely solely on global `ThemedStatusBar`.
+- Keep Splash first-run only and native launch screen for cold starts.
+- Continue removing any stray per-screen StatusBar components.
 - Optionally add a UX-friendly first-run intro before Login.
-
